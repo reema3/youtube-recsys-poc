@@ -53,6 +53,10 @@ start_date = end_date - pd.Timedelta(days=180)
 timestamps = pd.date_range(start=start_date,end=end_date, periods=interaction_count*2)
 interaction_df['timestamp'] = np.random.choice(timestamps,size =interaction_count )
 
+# Extract the 'is_weekend' feature from the timestamp
+# dt.dayofweek returns 0-6 (Monday=0, Sunday=6). So >= 5 is Saturday/Sunday.
+interaction_df['is_weekend'] = interaction_df['timestamp'].dt.dayofweek >= 5
+
 # Sort by timestamp to simulate chronological data collection
 interaction_df = interaction_df.sort_values('timestamp').reset_index(drop=True)
 
@@ -60,9 +64,19 @@ interaction_df = interaction_df.sort_values('timestamp').reset_index(drop=True)
 interaction_df = interaction_df.merge(user_df,on='user_id', how='left')
 interaction_df = interaction_df.merge(videos_df,on='video_id', how ='left')
 
-#Setting the base probability to 10% (0.1) mimics this reality. Most impressions result in a "skip" (0).
-#By setting matched probability to 0.75, we create a massive mathematical "signal." The model will quickly realize, "Ah, when these categories align, clicks explode!"
-interaction_df['probability'] = np.where(interaction_df['preferred_category']==interaction_df['category'],0.75,0.1)
+# Setting the base probability to 10% (0.1) mimics this reality. Most impressions result in a "skip" (0).
+# By setting matched probability to 0.75, we create a massive mathematical "signal." The model will quickly realize, "Ah, when these categories align, clicks explode!"
+# Adding rule like Users under 25 have an artificially high probability of clicking "Comedy" videos.
+# If a video is in the "News" category, give it a high probability of being clicked on weekends.
+conditions = [
+    (interaction_df['preferred_category'] == interaction_df['category']),
+    (interaction_df['category'] == 'News') & (interaction_df['is_weekend'] == True),
+    (interaction_df['age'] <= 25) & (interaction_df['category'] == 'Comedy')
+]
+
+choices = [0.75, 0.6, 0.6]
+
+interaction_df['probability'] = np.select(conditions, choices, default=0.1)
 
 interaction_df['clicked'] = np.random.uniform(0,1,size=interaction_count)
 interaction_df['clicked'] = np.where(interaction_df['probability']>=interaction_df['clicked'],1,0).astype(int)
